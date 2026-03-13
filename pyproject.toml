@@ -1,0 +1,37 @@
+# [build-system]
+# requires = ["setuptools", "setuptools-scm"]
+# build-backend = "setuptools.build_meta"
+
+[project]
+name = "envoy-pyauth"
+description = "Envoy Python Authentication Library"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["envoy", "python", "authentication"]
+license = {text = "AGPL-3.0-only"}
+classifiers = [
+    "Framework :: Django",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "Django>=5.2.12,!=6.0.0,!=6.0.1,!=6.0.2",
+    "djangorestframework>=3.15.2",
+    "requests>=2.32.3"
+]
+dynamic = ["version"]
+
+[tool.black]
+line-length = 120
+
+[dependency-groups]
+dev = [
+    "black>=26.1.0",
+]
+
+
+# [project.scripts]
+# my-script = "my_package.module:function"
+
+# ... other project metadata fields as specified in:
+#     https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
