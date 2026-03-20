@@ -19,7 +19,7 @@ dependencies = [
     "djangorestframework>=3.15.2",
     "requests>=2.32.3"
 ]
-dynamic = ["version"]
+version = "1.1.0"
 
 [tool.black]
 line-length = 120

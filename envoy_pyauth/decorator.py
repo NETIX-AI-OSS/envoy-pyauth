@@ -1,3 +1,5 @@
+import functools
+
 from rest_framework import status
 from rest_framework.response import Response
 import logging
@@ -5,6 +7,32 @@ import logging
 from .common import DJANGO_DEBUG
 
 logger = logging.getLogger(__name__)
+
+
+def envoy_auth_exempt(view):
+    """Mark a view or viewset action as exempt from Envoy auth middleware.
+
+    Usage:
+        @envoy_auth_exempt
+        def my_public_view(request):
+            ...
+
+        class MyViewSet(viewsets.ModelViewSet):
+            @envoy_auth_exempt
+            def list(self, request):
+                ...
+
+    For class-based views, apply to the view class via dispatch or use on individual actions.
+    """
+
+    view._envoy_auth_exempt = True
+
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        return view(*args, **kwargs)
+
+    wrapped._envoy_auth_exempt = True
+    return wrapped
 
 
 def envoy_permission(permission_name):

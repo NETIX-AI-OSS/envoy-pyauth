@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 class AuthorizationMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, *view_args, **view_kwargs):
+        if getattr(view_func, "_envoy_auth_exempt", False) or getattr(
+            getattr(view_func, "cls", None), "_envoy_auth_exempt", False
+        ):
+            request.envoy = None
+            return None
         if DJANGO_DEBUG:
             request.envoy = {
                 "username": "DEBUG",
