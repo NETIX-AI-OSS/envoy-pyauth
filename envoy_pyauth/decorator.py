@@ -17,15 +17,20 @@ def envoy_auth_exempt(view):
         def my_public_view(request):
             ...
 
+        @envoy_auth_exempt
+        class MyPublicView(APIView):
+            ...
+
         class MyViewSet(viewsets.ModelViewSet):
             @envoy_auth_exempt
             def list(self, request):
                 ...
-
-    For class-based views, apply to the view class via dispatch or use on individual actions.
     """
 
     view._envoy_auth_exempt = True
+
+    if isinstance(view, type):
+        return view
 
     @functools.wraps(view)
     def wrapped(*args, **kwargs):
