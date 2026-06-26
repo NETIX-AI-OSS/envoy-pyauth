@@ -6,7 +6,7 @@
 name = "envoy-pyauth"
 description = "Envoy Python Authentication Library"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14,<4.0"
 keywords = ["envoy", "python", "authentication"]
 license = {text = "AGPL-3.0-only"}
 classifiers = [
