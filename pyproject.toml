@@ -53,3 +53,7 @@ check_untyped_defs = true
 
 [tool.django-stubs]
 django_settings_module = "envoy_pyauth.mypy_settings"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
