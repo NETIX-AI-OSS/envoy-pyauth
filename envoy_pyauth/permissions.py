@@ -154,11 +154,12 @@ class EnvoyObjectOrgOwnership(BasePermission):
         if not envoy:
             return True
         caller = envoy.get("organization")
-        # The auth payload may carry is_superuser as a native bool or the string "true"/"false".
-        if caller == 0 or str(envoy.get("is_superuser")).lower() == "true":
+        # The payload may carry either as a native value or a string ("0", "true"), and the
+        # organization is the literal "bogus" when it could not be resolved.
+        if str(caller) == "0" or str(envoy.get("is_superuser")).lower() == "true":
             return True
         owner = getattr(obj, "organization_id", None)
-        return owner is None or owner == caller
+        return owner is None or str(owner) == str(caller)
 
 
 def require_permissions(*codenames: str, require_all: bool = True) -> type[BasePermission]:

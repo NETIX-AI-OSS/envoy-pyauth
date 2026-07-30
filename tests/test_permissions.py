@@ -197,6 +197,15 @@ def test_object_ownership_unowned_object_allowed():
     assert gate.has_object_permission(OrgReq(org=7), View(), SimpleNamespace()) is True
 
 
+def test_object_ownership_tolerates_string_organizations():
+    gate = EnvoyObjectOrgOwnership()
+    assert gate.has_object_permission(OrgReq(org="7"), View(), _obj(7)) is True
+    assert gate.has_object_permission(OrgReq(org="0"), View(), _obj(7)) is True
+    assert gate.has_object_permission(OrgReq(org="7"), View(), _obj(9)) is False
+    # "bogus" is the unresolved-organization sentinel — it owns nothing.
+    assert gate.has_object_permission(OrgReq(org="bogus"), View(), _obj(7)) is False
+
+
 def test_object_ownership_own_rows_writable():
     gate = EnvoyObjectOrgOwnership()
     for method in ("POST", "PUT", "PATCH", "DELETE"):
