@@ -175,6 +175,14 @@ def test_object_ownership_platform_callers_exempt():
     gate = EnvoyObjectOrgOwnership()
     assert gate.has_object_permission(OrgReq(org=0), View(), _obj(7)) is True
     assert gate.has_object_permission(OrgReq(org=7, is_superuser=True), View(), _obj(9)) is True
+    assert gate.has_object_permission(OrgReq(org=7, is_superuser="true"), View(), _obj(9)) is True
+
+
+def test_object_ownership_stringly_false_superuser_not_exempt():
+    # The auth payload can carry is_superuser as the string "false"; truthiness must not exempt it.
+    gate = EnvoyObjectOrgOwnership()
+    assert gate.has_object_permission(OrgReq(org=7, is_superuser="false"), View(), _obj(0)) is False
+    assert gate.has_object_permission(OrgReq(org=7, is_superuser="False"), View(), _obj(9)) is False
 
 
 def test_object_ownership_no_envoy_falls_open():

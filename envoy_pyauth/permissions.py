@@ -154,7 +154,8 @@ class EnvoyObjectOrgOwnership(BasePermission):
         if not envoy:
             return True
         caller = envoy.get("organization")
-        if caller == 0 or envoy.get("is_superuser"):
+        # The auth payload may carry is_superuser as a native bool or the string "true"/"false".
+        if caller == 0 or str(envoy.get("is_superuser")).lower() == "true":
             return True
         owner = getattr(obj, "organization_id", None)
         return owner is None or owner == caller
