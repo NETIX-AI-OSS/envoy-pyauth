@@ -17,8 +17,12 @@ These classes make enforcement fail *closed*:
 * :func:`require_permissions` — factory building a permission class that requires one or
   more codenames, for ``APIView`` / ``@action`` endpoints outside the CRUD map.
 
-All classes honour ``DJANGO_DEBUG`` the same way the decorators do (full bypass in local
-debug), so behaviour is consistent across the codebase.
+* :class:`EnvoyObjectOrgOwnership` — object-level ownership gate: tenant callers may read
+  org-0 template rows (``EnvoyQueryFilter`` unions ``[0, org]``) but may only *write* rows
+  their own organization owns. Platform callers are exempt.
+
+The codename classes honour ``DJANGO_DEBUG`` the same way the decorators do (full bypass in
+local debug), so behaviour is consistent across the codebase.
 """
 
 from __future__ import annotations
@@ -131,6 +135,31 @@ class EnvoyActionPermissions(HasEnvoy):
         if callable(getter):
             return getter()
         return resolve_required_permission(view)
+
+
+class EnvoyObjectOrgOwnership(BasePermission):
+    """Object-level org ownership gate for writes.
+
+    Reads are untouched (tenants keep seeing org-0 shared rows). On a write, a tenant caller
+    must own the object: platform callers (``organization == 0`` or ``is_superuser``) and
+    objects with no ``organization_id`` are exempt.
+    """
+
+    message = "This record belongs to another organization."
+
+    def has_object_permission(self, request, view, obj) -> bool:
+        if request.method in SAFE_METHODS:
+            return True
+        envoy = getattr(request, "envoy", None)
+        if not envoy:
+            return True
+        caller = envoy.get("organization")
+        # The payload may carry either as a native value or a string ("0", "true"), and the
+        # organization is the literal "bogus" when it could not be resolved.
+        if str(caller) == "0" or str(envoy.get("is_superuser")).lower() == "true":
+            return True
+        owner = getattr(obj, "organization_id", None)
+        return owner is None or str(owner) == str(caller)
 
 
 def require_permissions(*codenames: str, require_all: bool = True) -> type[BasePermission]:
