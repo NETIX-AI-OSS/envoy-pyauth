@@ -13,7 +13,7 @@ This module generalizes the two hand-rolled versions of that check that grew in-
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from django.conf import settings
 
@@ -47,7 +47,7 @@ class ScopedRelatedFieldsMixin:
     can still name an org-0 primitive can re-introduce the references the repoint just removed.
     """
 
-    scoped_related_fields: dict[str, str] = {}
+    scoped_related_fields: ClassVar[dict[str, str]] = {}
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

@@ -1,6 +1,10 @@
 """Unit tests for EnvoyQueryFilter's org scoping — pure branching tests, no Django DB."""
 
-from envoy_pyauth.utils import EnvoyQueryFilter, organization_is_isolated, scoped_org_ids
+from envoy_pyauth.utils import (
+    EnvoyQueryFilter,
+    organization_is_isolated,
+    scoped_org_ids,
+)
 
 
 class FakeQuerySet:
