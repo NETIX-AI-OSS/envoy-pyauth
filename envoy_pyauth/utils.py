@@ -4,50 +4,48 @@ from django.db.models import Q, QuerySet
 
 from .types import EnvoyHttpRequest
 
-#: Organization id of the platform template catalog. Tenant callers read these rows through the
-#: ``[0, org]`` union until their organization is migrated onto its own cloned primitives.
+#: Organization id of the platform template catalog. Platform callers act as this organization
+#: to edit the shared templates; tenant callers no longer read it (see the module note below).
 TEMPLATE_ORG_ID = 0
 
 
-def _envoy_flag(envoy: dict[str, Any], key: str) -> bool:
-    """Read a boolean flag off the envoy payload, tolerating stringly values.
-
-    ``/auth/me/`` emits native booleans, but the DEBUG payload and historical cached payloads
-    carry ``"true"`` / ``"false"`` strings — and ``bool("false")`` is ``True``, which would
-    silently invert every flag it touches.
-    """
-    return str(envoy.get(key)).lower() == "true"
-
-
 def organization_is_isolated(request: EnvoyHttpRequest | None) -> bool:
-    """Whether the caller's organization owns its primitives and must not read org 0.
+    """Retained for compatibility; every tenant organization is isolated as of v3.0.0.
 
-    Driven by ``Organization.primitive_isolation_enabled`` in user-management, which rides the
-    ``/auth/me/`` snapshot as ``organization_isolated``. Defaults to ``False``: an organization
-    that has not been migrated (or a payload predating the field) keeps today's shared-catalog
-    behaviour, so the flag is safe to deploy ahead of any migration.
+    The org-0 primitive cloning migration is complete: each organization owns its primitives,
+    so ``organization_isolated`` no longer varies. Callers still reading this flag get ``True``
+    for any resolved tenant caller, and code branching on it can be deleted.
     """
     envoy = getattr(request, "envoy", None) if request is not None else None
-    if not envoy:
-        return False
-    return _envoy_flag(cast(dict[str, Any], envoy), "organization_isolated")
+    return bool(envoy)
 
 
 def scoped_org_ids(request: EnvoyHttpRequest | None, include_shared: bool | None = None) -> list[int]:
-    """The organization ids a tenant caller may read.
+    """The organization ids a tenant caller may read — its own, and only its own.
 
-    ``[org]`` once the caller's organization is isolated, ``[0, org]`` while it still reads the
-    shared template catalog. ``include_shared`` overrides the flag in both directions for call
-    sites that know better (e.g. a service whose primitives are already fully per-org).
+    ``include_shared=True`` is the one remaining way to re-admit the org-0 catalog, and it
+    exists for the handful of platform-facing endpoints that genuinely aggregate across the
+    template org. It is never derived from the request any more: an organization that still
+    needed the union would be one whose repoint never finished, and silently widening its
+    queryset is how that goes unnoticed.
     """
     envoy = cast(dict[str, Any], getattr(request, "envoy", None) or {})
     org_id = envoy["organization"]
-    if include_shared is None:
-        include_shared = not organization_is_isolated(request)
     return [TEMPLATE_ORG_ID, org_id] if include_shared else [org_id]
 
 
 class EnvoyQueryFilter:
+    """Scope querysets to the caller's organization.
+
+    As of v3.0.0 a tenant caller sees only its own rows. Before the org-0 primitive cloning
+    migration this unioned in organization 0, the shared template catalog every tenant read
+    from; now each organization owns cloned copies of those primitives, so the union would only
+    re-expose the template rows the migration moved everyone off.
+
+    Platform callers (``organization == 0``) are unchanged: they keep the unscoped global view,
+    which is what makes acting as org 0 the sanctioned way to edit the template catalog.
+    """
+
     @staticmethod
     def _identity(request: EnvoyHttpRequest | None) -> dict[str, Any] | None:
         envoy = getattr(request, "envoy", None) if request is not None else None

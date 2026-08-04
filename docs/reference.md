@@ -91,8 +91,9 @@ Fallback results:
 
 Scoped branch:
 
-- Filters on `field_name__in=scoped_org_ids(request, include_shared)` — `[0, org]` while the
-  caller's organization still reads the shared template catalog, `[org]` once it is isolated
+- Filters on `field_name__in=scoped_org_ids(request, include_shared)` — `[org]`. The `[0, org]`
+  union was removed in v3.0.0: every organization now owns cloned primitives, so unioning the
+  template catalog back in would only re-expose the rows the migration moved everyone off
 - Applies `is_deleted=False` when `delete_filter=True`
 - Orders by `id` in delete-filter branch
 
@@ -104,19 +105,15 @@ Same branching behavior as `get_queryset`, but operates on an existing queryset 
 
 ### `organization_is_isolated(request)`
 
-Whether the caller's organization owns its primitives and must no longer read org 0. Reads
-`request.envoy["organization_isolated"]`, which user-management emits in the `/auth/me/`
-snapshot from `Organization.primitive_isolation_enabled`.
-
-- String-tolerant: `"true"` / `"false"` are read as booleans (`bool("false")` is `True`, which
-  would otherwise invert the flag for every payload that carries it as a string).
-- Absent flag ⇒ `False`, so payloads predating the field — including ones cached for up to
-  `ENVOY_AUTH_CACHE_TTL` across a deploy — keep the shared-catalog behavior.
+**Deprecated in v3.0.0** — returns `True` for any resolved tenant caller. Every organization
+owns its primitives now, so the flag no longer varies and code branching on it can be deleted.
 
 ### `scoped_org_ids(request, include_shared=None)`
 
-The organization ids a tenant caller may read: `[0, org]` or `[org]`. `include_shared`
-overrides the flag in both directions.
+The organization ids a tenant caller may read: `[org]`, or `[0, org]` when `include_shared=True`
+is passed explicitly. It is never derived from the request — an organization that still needed
+the union would be one whose repoint never finished, and silently widening its queryset is how
+that goes unnoticed.
 
 ### `TEMPLATE_ORG_ID`
 
