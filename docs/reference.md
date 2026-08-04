@@ -169,3 +169,30 @@ Note:
 - Missing/malformed decorator identity: HTTP 401 response.
 - Authenticated permission/service mismatch: HTTP 403 response.
 - Query filter missing organization key (`KeyError`): returns `.none()`.
+
+## Module: `envoy_pyauth.cloning`
+
+Conventions shared by every service that clones the org-0 template catalog.
+
+### `org_key(name, org_id)` / `org_prefix(org_id)`
+
+Machine-key prefixing: `org_key("fire_alarm_systems", 3)` is `"nc3_fire_alarm_systems"`.
+Idempotent, and re-homing replaces rather than nests (`nc3_x` cloned into org 5 is `nc5_x`).
+Applies to identifier columns (`name`, `key`, `code`, `slug`, `path`) only — display columns
+are copied byte-identical, because display names are the cross-service name contract.
+
+### `base_key(name)` / `key_owner(name)` / `is_org_key(name, org_id)`
+
+Inverse helpers: the template-relative key, the owning organization (or `None`), and a
+membership test.
+
+### `PROVENANCE_FIELDS`
+
+`("cloned_from_id", "template_revision", "is_customized")` — the columns every cloneable model
+gains. Plain columns rather than foreign keys: the sources are multi-table-inherited in
+asset-service, and a cascade from a template onto live tenant rows is precisely what must not
+happen.
+
+### `TEMPLATE_ORG_ID`
+
+`0`.
