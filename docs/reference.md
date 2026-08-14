@@ -17,7 +17,8 @@ Purpose:
 Token resolution order:
 
 1. `request.META.get("HTTP_AUTHORIZATION")`
-2. `os.getenv("USER_SVC_AUTH")`
+
+There is no environment-variable fallback for inbound identity.
 
 Auth URL behavior:
 
@@ -27,29 +28,18 @@ Auth URL behavior:
 
 Assignment behavior:
 
-- On success: `request.envoy = api_response.json()`.
+- On success with a valid identity envelope: `request.envoy = api_response.json()`.
 - On request errors: warning log, then `request.envoy = None`.
 - On outer exception: warning log and returns `None`.
 
-Debug behavior:
+Positive cache behavior:
 
-- If `DJANGO_DEBUG` is true, middleware first populates a debug payload in `request.envoy`.
-- Middleware still proceeds with token resolution and external call path afterward.
+- Cache keys contain only a SHA-256 digest of the credential.
+- `ENVOY_AUTH_CACHE_TTL` may lower the lifetime but cannot exceed 30 seconds.
+- A JWT `exp` claim shortens the cache lifetime further.
+- Payloads without `organization` plus a list-like `permissions` value are rejected.
 
-Debug payload shape used by current implementation:
-
-```json
-{
-  "username": "DEBUG",
-  "is_superuser": "true",
-  "user_type": "organization",
-  "organization": 0,
-  "site_id": null,
-  "permissions": ["sample-permission"],
-  "groups": ["groups"],
-  "feature_flags": "feature_1"
-}
-```
+`DJANGO_DEBUG` never injects identity and never changes this behavior.
 
 ## Module: `envoy_pyauth.decorator`
 
@@ -59,29 +49,24 @@ Returns a decorator that wraps a view function.
 
 Behavior:
 
-- If `DJANGO_DEBUG` is true: executes wrapped function directly.
-- Otherwise:
-  - Reads `request` from `args[1]`.
-  - Checks membership: `permission_name in request.envoy["permissions"]`.
-  - If missing: returns DRF `Response(status=403)`.
-  - On exception (missing keys/shape/etc.): logs warning and returns `Response(status=400)`.
+- Supports function views, bound methods, and a `request=` keyword argument.
+- Missing/malformed identity returns DRF `Response(status=401)`.
+- A resolved caller without the codename returns `Response(status=403)`.
+- A caller holding the codename executes the wrapped function.
 
-Usage note:
-
-- This wrapper assumes DRF-style method signatures where `request` is positional argument 2.
-
-### `envoy_internal_only()`
+### `envoy_internal_only(*, allowed_services=())`
 
 Returns a decorator that wraps a view function.
 
 Behavior:
 
-- If `DJANGO_DEBUG` is true: executes wrapped function directly.
-- Otherwise:
-  - Reads `request` from `args[1]`.
-  - If `getattr(request, "envoy", False)` is truthy: returns `Response(status=403)`.
-  - On exception: logs warning and returns `Response(status=400)`.
-  - Else executes wrapped function.
+- Missing identity returns 401.
+- Platform-internal identity executes the wrapped function.
+- A named service identity executes only if its `service_name` is explicitly included
+  in `allowed_services`.
+- All other identities return 403.
+- The legacy user-management platform-internal envelope (`user_id=0`, organization 0,
+  superuser, username `platform_internal`) is accepted for rollout compatibility.
 
 ## Module: `envoy_pyauth.utils`
 
@@ -91,12 +76,13 @@ Behavior:
 
 Returns a model queryset filtered according to request/envoy context.
 
-Fallback branch (returns broad/default query) when any is true:
+Fail-closed branch returns `model.objects.none()` when identity is missing, malformed,
+or carries an unresolved organization.
 
-- `request is None`
-- `not session_customer_filter`
-- `not getattr(request, "envoy", False)`
-- `request.envoy["organization"] == 0`
+The broad/default query is returned only for an authenticated identity when either:
+
+- `session_customer_filter` is false, or
+- the resolved organization is numeric or string `0`.
 
 Fallback results:
 
@@ -109,9 +95,7 @@ Scoped branch:
 - Applies `is_deleted=False` when `delete_filter=True`
 - Orders by `id` in delete-filter branch
 
-Exception behavior:
-
-- On `KeyError` while reading envoy organization: returns `model.objects.none()`.
+Invalid identity behavior: returns `model.objects.none()`.
 
 #### `filter_queryset(request, queryset, session_customer_filter, field_name="organization_id", delete_filter=True)`
 
@@ -121,17 +105,12 @@ Same branching behavior as `get_queryset`, but operates on an existing queryset 
 
 ### `DJANGO_DEBUG`
 
-Definition:
-
-- `DJANGO_DEBUG = os.environ["DJANGO_DEBUG"] == "TRUE"`
-
-Implication:
-
-- Environment variable must exist at import time in current implementation.
+Compatibility export parsed with a safe false default. It is not consulted by any
+authentication or authorization decision.
 
 ## Import surface
 
-The package module `envoy_pyauth/__init__.py` is currently empty.
+The package module `envoy_pyauth/__init__.py` initializes Django typing support.
 
 Use module-level imports:
 
@@ -147,5 +126,6 @@ Note:
 ## Failure-mode behavior summary
 
 - Middleware auth call failures: logged warning, `request.envoy` becomes `None`.
-- Decorator context/shape errors: logged warning, HTTP 400 response.
+- Missing/malformed decorator identity: HTTP 401 response.
+- Authenticated permission/service mismatch: HTTP 403 response.
 - Query filter missing organization key (`KeyError`): returns `.none()`.

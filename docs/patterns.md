@@ -18,18 +18,19 @@ Behavior:
 
 - Permitted: execute wrapped function.
 - Not permitted: return HTTP 403.
-- Missing/malformed context: return HTTP 400.
+- Missing/malformed context: return HTTP 401.
 
 ## Internal-only gate pattern
 
 `envoy_internal_only()` is a specialized gate for internal route usage semantics.
 
-Behavior (current implementation):
+Behavior:
 
-- In non-debug mode, requests with truthy `request.envoy` return HTTP 403.
-- Requests without truthy `request.envoy` continue to wrapped function.
-
-This behavior is intentionally documented as-is and should be considered when designing endpoint exposure.
+- A platform-internal identity is permitted. The current legacy user-management
+  envelope is recognized while services migrate to `is_platform_internal=true`.
+- Named `user_type=service` identities are permitted only when their `service_name`
+  appears in the decorator's `allowed_services` argument.
+- Missing identity returns HTTP 401; other identities return HTTP 403.
 
 ## Multi-tenant queryset scoping pattern
 
@@ -40,14 +41,10 @@ Pattern details:
 - For scoped requests, query includes `organization_id in [0, request.envoy["organization"]]`.
 - Optional soft-delete filtering controlled by `delete_filter`.
 - Supports model-level entry (`get_queryset`) and queryset-level entry (`filter_queryset`).
+- A missing, incomplete, or unresolved identity returns `.none()`, even when the
+  tenant-filter flag is disabled.
 
-## Debug-first integration pattern
+## Local integration pattern
 
-The library includes debug-oriented branches controlled by `DJANGO_DEBUG == "TRUE"`.
-
-Intent:
-
-- Support rapid local integration.
-- Allow endpoint/dev flow testing when external auth dependencies are not fully wired.
-
-Production and deployment teams should document how `DJANGO_DEBUG` is managed per environment.
+`DJANGO_DEBUG` does not bypass any security decision. Tests should attach an explicit
+identity; genuinely public routes should use `@envoy_auth_exempt`.

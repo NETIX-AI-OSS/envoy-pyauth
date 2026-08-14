@@ -27,6 +27,15 @@ Example use cases:
 
 Use `@envoy_internal_only()` for routes that should not be accessible in normal external-auth user flow and are reserved for internal callers or control-plane style endpoints.
 
+The caller must present a credential which `/auth/me/` resolves as platform-internal.
+For a named service identity, opt it in explicitly:
+
+```python
+@envoy_internal_only(allowed_services=("tag-service",))
+def post(self, request):
+    ...
+```
+
 ## 4) Organization-scoped data access
 
 `EnvoyQueryFilter` supports multi-tenant access behavior by filtering `organization_id` against:
@@ -36,8 +45,9 @@ Use `@envoy_internal_only()` for routes that should not be accessible in normal 
 
 This can be used for list APIs, report endpoints, and model-backed services where a tenant boundary is required.
 
-## 5) Debug integration during local development
+## 5) Integration during local development
 
-When `DJANGO_DEBUG` is set to `TRUE`, middleware/decorators include debug-oriented behavior to reduce setup friction while developing and debugging integration paths.
+Attach a representative `request.envoy` identity in tests. Debug mode intentionally does
+not alter authorization behavior.
 
 See [API Reference](reference.md) and [Patterns](patterns.md) for exact behavior details.

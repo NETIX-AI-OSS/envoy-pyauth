@@ -1,9 +1,7 @@
 """Reusable DRF permission classes for Envoy-authenticated services.
 
-The Envoy middleware only *annotates* ``request.envoy`` (it never rejects), and the
-``EnvoyQueryFilter`` scoping fails *open* when ``request.envoy`` is absent. So a service
-that sets no ``DEFAULT_PERMISSION_CLASSES`` is effectively ``AllowAny`` on every write.
-These classes make enforcement fail *closed*:
+The Envoy middleware annotates ``request.envoy`` but does not itself reject a request.
+These classes and query helpers make downstream enforcement fail closed:
 
 * :class:`HasEnvoy` — require a resolved Envoy identity. Use as the platform-wide
   ``DEFAULT_PERMISSION_CLASSES`` so unauthenticated / failed-auth requests are rejected
@@ -21,8 +19,8 @@ These classes make enforcement fail *closed*:
   org-0 template rows (``EnvoyQueryFilter`` unions ``[0, org]``) but may only *write* rows
   their own organization owns. Platform callers are exempt.
 
-The codename classes honour ``DJANGO_DEBUG`` the same way the decorators do (full bypass in
-local debug), so behaviour is consistent across the codebase.
+Authorization is enforced in every runtime mode, including ``DJANGO_DEBUG``. Tests and local
+development should attach an explicit identity instead of disabling the security boundary.
 """
 
 from __future__ import annotations
@@ -31,15 +29,26 @@ from collections.abc import Iterable
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-from .common import DJANGO_DEBUG
-
 
 def _envoy_permissions(request) -> frozenset[str]:
     """The caller's canonical permission codenames (empty when unauthenticated)."""
     envoy = getattr(request, "envoy", None)
     if not envoy:
         return frozenset()
-    return frozenset(envoy.get("permissions", ()))
+    permissions = envoy.get("permissions", ())
+    if isinstance(permissions, str) or not isinstance(permissions, Iterable):
+        return frozenset()
+    return frozenset(str(permission) for permission in permissions)
+
+
+def _has_envoy_identity(request) -> bool:
+    """Return whether the request carries the minimum trusted identity envelope."""
+    envoy = getattr(request, "envoy", None)
+    return (
+        isinstance(envoy, dict)
+        and envoy.get("organization") not in (None, "", "bogus")
+        and isinstance(envoy.get("permissions"), (list, tuple, set, frozenset))
+    )
 
 
 # Write actions map to a verb; reads (SAFE_METHODS) are never gated by default so a fresh
@@ -69,7 +78,7 @@ def resolve_required_permission(view) -> str | None:
     """
     action = getattr(view, "action", None)
     req_map = getattr(view, "required_permissions", None) or {}
-    if action in req_map:
+    if action is not None and action in req_map:
         return req_map[action]
     module = getattr(view, "permission_module", None)
     if not module:
@@ -77,7 +86,7 @@ def resolve_required_permission(view) -> str | None:
     method = getattr(getattr(view, "request", None), "method", "GET")
     if method in SAFE_METHODS:
         return None
-    verb = _WRITE_VERB_BY_ACTION.get(action, "edit")
+    verb = _WRITE_VERB_BY_ACTION.get(action if isinstance(action, str) else "", "edit")
     return f"{module}-{verb}"
 
 
@@ -92,9 +101,7 @@ class HasEnvoy(BasePermission):
     message = "Authentication required."
 
     def has_permission(self, request, view) -> bool:
-        if DJANGO_DEBUG:
-            return True
-        return bool(getattr(request, "envoy", None))
+        return _has_envoy_identity(request)
 
 
 class EnvoyActionPermissions(HasEnvoy):
@@ -117,8 +124,6 @@ class EnvoyActionPermissions(HasEnvoy):
     message = "You do not have permission to perform this action."
 
     def has_permission(self, request, view) -> bool:
-        if DJANGO_DEBUG:
-            return True
         if not super().has_permission(request, view):
             return False
         codename = self._required_permission(view)
@@ -140,18 +145,18 @@ class EnvoyActionPermissions(HasEnvoy):
 class EnvoyObjectOrgOwnership(BasePermission):
     """Object-level org ownership gate for writes.
 
-    Reads are untouched (tenants keep seeing org-0 shared rows). On a write, a tenant caller
-    must own the object: platform callers (``organization == 0`` or ``is_superuser``) and
-    objects with no ``organization_id`` are exempt.
+    Authenticated reads are untouched (tenants keep seeing org-0 shared rows). On a write,
+    a tenant caller must own an object with an explicit ``organization_id``. Platform
+    callers (``organization == 0`` or ``is_superuser``) are exempt.
     """
 
     message = "This record belongs to another organization."
 
     def has_object_permission(self, request, view, obj) -> bool:
-        if request.method in SAFE_METHODS:
-            return True
         envoy = getattr(request, "envoy", None)
-        if not envoy:
+        if not isinstance(envoy, dict) or not _has_envoy_identity(request):
+            return False
+        if request.method in SAFE_METHODS:
             return True
         caller = envoy.get("organization")
         # The payload may carry either as a native value or a string ("0", "true"), and the
@@ -159,7 +164,7 @@ class EnvoyObjectOrgOwnership(BasePermission):
         if str(caller) == "0" or str(envoy.get("is_superuser")).lower() == "true":
             return True
         owner = getattr(obj, "organization_id", None)
-        return owner is None or str(owner) == str(caller)
+        return owner is not None and str(owner) == str(caller)
 
 
 def require_permissions(*codenames: str, require_all: bool = True) -> type[BasePermission]:
@@ -178,8 +183,6 @@ def require_permissions(*codenames: str, require_all: bool = True) -> type[BaseP
         message = "You do not have permission to perform this action."
 
         def has_permission(self, request, view) -> bool:
-            if DJANGO_DEBUG:
-                return True
             if not super().has_permission(request, view):
                 return False
             held = _envoy_permissions(request)
@@ -192,8 +195,8 @@ def require_permissions(*codenames: str, require_all: bool = True) -> type[BaseP
 
 def has_permissions(request, codenames: Iterable[str], require_all: bool = True) -> bool:
     """Imperative check for use inside view bodies (e.g. object-level branching)."""
-    if DJANGO_DEBUG:
-        return True
+    if not _has_envoy_identity(request):
+        return False
     held = _envoy_permissions(request)
     check = all if require_all else any
     return check(code in held for code in codenames)

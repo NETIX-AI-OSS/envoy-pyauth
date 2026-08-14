@@ -14,10 +14,9 @@ description = "Envoy Python Authentication Library"
 readme = "README.md"
 requires-python = ">=3.14,<4.0"
 keywords = ["envoy", "python", "authentication"]
-license = {text = "AGPL-3.0-only"}
+license = "AGPL-3.0-only"
 classifiers = [
     "Framework :: Django",
-    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
@@ -28,17 +27,20 @@ dependencies = [
     # runtime (not dev-only) dependency or every consumer venv without it fails to import.
     "django-stubs-ext>=5.1.0"
 ]
-version = "1.6.0"
+version = "2.0.0"
 
 [tool.black]
 line-length = 120
+target-version = ["py314"]
 
 [dependency-groups]
 dev = [
     "black>=26.1.0",
     "django-stubs>=5.2.0",
     "mypy>=1.13",
+    "pip-audit>=2.10.0",
     "pre-commit>=4.5.0",
+    "pytest>=9.0.0",
     "ruff>=0.9.10",
 ]
 
@@ -66,3 +68,8 @@ django_settings_module = "envoy_pyauth.mypy_settings"
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.ruff.lint]
+# The checkout directory contains a hyphen; Ruff otherwise reports every module
+# below it as an invalid import name even though the packaged module is envoy_pyauth.
+ignore = ["N999"]

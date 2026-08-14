@@ -80,11 +80,12 @@ def test_session_customer_filter_disabled_is_unscoped():
     ]
 
 
-def test_missing_envoy_is_unscoped():
-    assert get(Req(None)) == [("filter", {"is_deleted": False}), ("order_by", ("id",))]
-    assert get(Req({})) == [("filter", {"is_deleted": False}), ("order_by", ("id",))]
-    assert get(None) == [("filter", {"is_deleted": False}), ("order_by", ("id",))]
-    assert get(None, delete_filter=False) == [("all", {})]
+def test_missing_envoy_fails_closed():
+    assert get(Req(None)) == [("none", {})]
+    assert get(Req({})) == [("none", {})]
+    assert get(None) == [("none", {})]
+    assert get(None, delete_filter=False) == [("none", {})]
+    assert get(None, session_customer_filter=False) == [("none", {})]
 
 
 def test_envoy_without_organization_returns_none():
@@ -103,5 +104,13 @@ def test_filter_queryset_mirrors_get_queryset():
         ("filter", {"is_deleted": False}),
         ("order_by", ("id",)),
     ]
-    assert filtered(Req(None)) == [("filter", {"is_deleted": False}), ("order_by", ("id",))]
+    assert filtered(Req(None)) == [("none", {})]
     assert filtered(Req({"permissions": []})) == [("none", {})]
+
+
+def test_string_platform_organization_is_unscoped():
+    assert get(Req({"organization": "0"})) == [("filter", {"is_deleted": False}), ("order_by", ("id",))]
+
+
+def test_bogus_organization_fails_closed():
+    assert get(Req({"organization": "bogus"})) == [("none", {})]

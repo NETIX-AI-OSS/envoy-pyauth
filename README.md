@@ -69,19 +69,38 @@ queryset = EnvoyQueryFilter.filter_queryset(
 
 ## Behavior Notes
 
-- This library intentionally supports debug-oriented flows controlled by
-  `DJANGO_DEBUG == "TRUE"` to simplify integration debugging.
-- Runtime behavior is intentionally documented as current implementation behavior
-  and is not hardened by this documentation change.
+- Authentication and authorization remain fail-closed when `DJANGO_DEBUG == "TRUE"`.
+  Local tests must attach an explicit `request.envoy` identity or mark a genuinely
+  public view with `@envoy_auth_exempt`.
+- Missing or malformed identity never produces an unscoped tenant query.
+- `@envoy_internal_only()` requires a resolved platform-internal identity. Named
+  service identities must be explicitly allow-listed by the endpoint.
 - The library relies on an external auth service (`USER_AUTH_SVC_URL`) for
   identity context resolution.
+- Positive identities are cached for at most 30 seconds, shortened further by a
+  JWT `exp` claim. Longer `ENVOY_AUTH_CACHE_TTL` values are safely capped.
 
 ## Environment Variables
 
-- `DJANGO_DEBUG` (required by current implementation)
+- `DJANGO_DEBUG` (optional compatibility setting; never bypasses authorization)
 - `USER_AUTH_SVC_URL` (optional, default:
   `http://user-management-auth.backend:8001`)
-- `USER_SVC_AUTH` (optional fallback auth header value)
+- `ENVOY_AUTH_CACHE_TTL` (optional; hard-capped at 30 seconds)
+
+`USER_SVC_AUTH` remains an outbound service-client credential. It is deliberately
+not used as a fallback for an inbound request that lacks `Authorization`.
+
+## Upgrading to 2.0
+
+- Tests and local clients must send an `Authorization` header or attach a complete
+  `request.envoy` envelope; `DJANGO_DEBUG` no longer grants access.
+- Service-to-service clients may keep reading `USER_SVC_AUTH` or a service-specific
+  variable, but must put that value in the outbound `Authorization` header.
+- Existing platform-internal credentials remain compatible with
+  `@envoy_internal_only()`. New named service identities require an explicit
+  `allowed_services=(...)` declaration.
+- Code that deliberately disables tenant filtering must still supply a resolved
+  identity. Unknown object ownership is now denied for writes.
 
 ## License
 
