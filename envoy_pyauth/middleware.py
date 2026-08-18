@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 _AUTH_TIMEOUT = float(os.environ.get("ENVOY_AUTH_TIMEOUT", "10"))
 _CACHE_TTL = int(os.environ.get("ENVOY_AUTH_CACHE_TTL", "300"))
-# Security changes (account disable, org/permission changes, credential revocation)
-# must converge quickly even if a consumer asks for a much longer cache lifetime.
+# Security changes must converge fast even with a long-lived cache TTL.
 _MAX_CACHE_TTL = 30
 
 
@@ -58,8 +57,7 @@ class AuthorizationMiddleware(MiddlewareMixin):
         try:
             auth_header = request.META.get("HTTP_AUTHORIZATION")
             request.envoy = _resolve(auth_header) if auth_header else None
-        # Cache backends and integrations can raise implementation-specific errors.
-        # The security invariant is to clear identity on every unexpected failure.
+        # Cache/integration errors clear identity; fail closed on any failure.
         except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive
             logger.warning("envoy_pyauth: %s", exc)
             request.envoy = None

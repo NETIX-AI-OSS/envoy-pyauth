@@ -51,9 +51,7 @@ def _has_envoy_identity(request) -> bool:
     )
 
 
-# Write actions map to a verb; reads (SAFE_METHODS) are never gated by default so a fresh
-# "<module>-view" codename nobody holds yet cannot black out reads. Custom write actions
-# default to "edit".
+# Reads are ungated by default so an unheld <module>-view stays open.
 _WRITE_VERB_BY_ACTION = {
     "create": "edit",
     "update": "edit",
@@ -133,9 +131,7 @@ class EnvoyActionPermissions(HasEnvoy):
 
     @staticmethod
     def _required_permission(view) -> str | None:
-        # A view may override get_required_permission() for bespoke logic; otherwise the
-        # canonical resolver derives the codename from permission_module / required_permissions
-        # so a viewset needs no per-repo boilerplate (see resolve_required_permission).
+        # get_required_permission() overrides the canonical resolver fallback.
         getter = getattr(view, "get_required_permission", None)
         if callable(getter):
             return getter()
@@ -159,8 +155,7 @@ class EnvoyObjectOrgOwnership(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         caller = envoy.get("organization")
-        # The payload may carry either as a native value or a string ("0", "true"), and the
-        # organization is the literal "bogus" when it could not be resolved.
+        # organization may be a string, or "bogus" if it could not be resolved.
         if str(caller) == "0" or str(envoy.get("is_superuser")).lower() == "true":
             return True
         owner = getattr(obj, "organization_id", None)
