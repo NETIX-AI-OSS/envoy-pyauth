@@ -56,22 +56,7 @@ def _named_service(identity: Any, allowed_services: frozenset[str]) -> bool:
 
 
 def envoy_auth_exempt[T: Callable[..., Any]](view: T) -> T:
-    """Mark a view or viewset action as exempt from Envoy auth middleware.
-
-    Usage:
-        @envoy_auth_exempt
-        def my_public_view(request):
-            ...
-
-        @envoy_auth_exempt
-        class MyPublicView(APIView):
-            ...
-
-        class MyViewSet(viewsets.ModelViewSet):
-            @envoy_auth_exempt
-            def list(self, request):
-                ...
-    """
+    """Mark a view, viewset action, or class as exempt from Envoy auth middleware."""
 
     view._envoy_auth_exempt = True  # type: ignore[attr-defined]
 
@@ -104,11 +89,7 @@ def envoy_permission(permission_name: str) -> Callable[[F], F]:
 
 
 def envoy_internal_only(*, allowed_services: tuple[str, ...] = ()) -> Callable[[F], F]:
-    """Require a platform-internal or explicitly allow-listed named service identity.
-
-    ``allowed_services`` only applies to identities carrying both ``user_type=service``
-    and a matching ``service_name``. An absent identity never represents an internal call.
-    """
+    """Require a platform-internal identity, or a named service identity explicitly allow-listed via ``allowed_services``."""
 
     service_names = frozenset(allowed_services)
 
