@@ -1,8 +1,4 @@
-"""Unit tests for the reusable DRF permission classes.
-
-Pure permission-logic tests — no Django DB. They rely on ``request.envoy`` being a plain
-dict (as the middleware sets it) and a lightweight view stub mirroring ``BaseViewSet``.
-"""
+"""Unit tests for the reusable DRF permission classes — pure logic, no Django DB."""
 
 from types import SimpleNamespace
 from typing import ClassVar
@@ -26,10 +22,7 @@ class Req:
 
 
 class View:
-    """Mirror of BaseViewSet.get_required_permission for test purposes.
-
-    Reads (safe HTTP methods) stay open by default; only writes are gated.
-    """
+    """Mirror of BaseViewSet.get_required_permission for test purposes; reads stay open, only writes are gated."""
 
     _VERB: ClassVar[dict[str, str]] = {
         "create": "edit",

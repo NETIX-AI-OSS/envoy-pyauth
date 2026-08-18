@@ -1,8 +1,4 @@
-"""Unit tests for EnvoyQueryFilter's org scoping.
-
-Pure branching tests — no Django DB. ``FakeQuerySet`` records the ORM calls the filter makes
-so each branch can be asserted on lookups instead of rows.
-"""
+"""Unit tests for EnvoyQueryFilter's org scoping — pure branching tests, no Django DB."""
 
 from envoy_pyauth.utils import EnvoyQueryFilter
 

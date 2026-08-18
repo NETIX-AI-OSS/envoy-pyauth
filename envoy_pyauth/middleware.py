@@ -23,24 +23,7 @@ _MAX_CACHE_TTL = 30
 
 
 class AuthorizationMiddleware(MiddlewareMixin):
-    """Resolve the incoming Authorization header to an envoy payload on ``request.envoy``.
-
-    Supported schemes (in this order):
-
-    * ``Bearer <jwt|hs_auth_token>`` and session cookies — forwarded to
-      ``/auth/me/`` directly.
-    * ``api <raw_haystack_key>`` — exchanged via
-      ``POST /auth/scram/api-key-login/`` for a Bearer authToken, then resolved
-      against ``/auth/me/``. This is the Haystack 4 service-to-service path.
-
-    Only the inbound ``Authorization`` header is considered. Service credentials
-    remain available to outbound clients through their explicit environment
-    variables, but are never substituted for a missing caller credential.
-
-    On any failure ``request.envoy`` is set to ``None``. Positive results are
-    cached under a SHA-256 of the raw header for at most 30 seconds, and never
-    beyond a JWT's ``exp`` claim.
-    """
+    """Resolve the inbound Authorization header to ``request.envoy``, failing closed and caching positive results for at most 30 seconds."""
 
     def process_view(
         self,

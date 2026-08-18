@@ -1,27 +1,4 @@
-"""Reusable DRF permission classes for Envoy-authenticated services.
-
-The Envoy middleware annotates ``request.envoy`` but does not itself reject a request.
-These classes and query helpers make downstream enforcement fail closed:
-
-* :class:`HasEnvoy` — require a resolved Envoy identity. Use as the platform-wide
-  ``DEFAULT_PERMISSION_CLASSES`` so unauthenticated / failed-auth requests are rejected
-  (401/403) instead of falling through.
-
-* :class:`EnvoyActionPermissions` — per-action permission gate for viewsets. Resolves the
-  codename required for the current action (via the view's ``get_required_permission()`` or
-  its ``required_permissions`` map) and checks it against the caller's canonical permission
-  list (``request.envoy["permissions"]`` — bare codenames, as emitted by ``/auth/me/``).
-
-* :func:`require_permissions` — factory building a permission class that requires one or
-  more codenames, for ``APIView`` / ``@action`` endpoints outside the CRUD map.
-
-* :class:`EnvoyObjectOrgOwnership` — object-level ownership gate: tenant callers may read
-  org-0 template rows (``EnvoyQueryFilter`` unions ``[0, org]``) but may only *write* rows
-  their own organization owns. Platform callers are exempt.
-
-Authorization is enforced in every runtime mode, including ``DJANGO_DEBUG``. Tests and local
-development should attach an explicit identity instead of disabling the security boundary.
-"""
+"""Reusable DRF permission classes and query helpers that make Envoy-authenticated enforcement fail closed."""
 
 from __future__ import annotations
 
@@ -61,19 +38,7 @@ _WRITE_VERB_BY_ACTION = {
 
 
 def resolve_required_permission(view) -> str | None:
-    """Canonical per-action codename resolver for BaseViewSet-style viewsets.
-
-    This is the single source of truth every service's ``BaseViewSet.get_required_permission``
-    should delegate to (previously each repo copy-pasted an identical body, which had begun to
-    diverge). Resolution order:
-
-    1. an explicit ``view.required_permissions[view.action]`` mapping wins (per-action override,
-       and the only way to gate a specific *read*);
-    2. otherwise, with no ``view.permission_module`` the action is ungated (``None``);
-    3. reads (SAFE_METHODS) stay open (``None``);
-    4. writes derive ``f"{permission_module}-{verb}"`` (``edit`` for create/update, ``delete`` for
-       destroy, ``edit`` for any custom write action).
-    """
+    """Canonical per-action codename resolver for BaseViewSet-style viewsets: explicit map > ungated (no module) > open reads > derived edit/delete for writes."""
     action = getattr(view, "action", None)
     req_map = getattr(view, "required_permissions", None) or {}
     if action is not None and action in req_map:
@@ -89,12 +54,7 @@ def resolve_required_permission(view) -> str | None:
 
 
 class HasEnvoy(BasePermission):
-    """Fail-closed authentication: require a resolved Envoy identity.
-
-    Intended as the platform-wide ``DEFAULT_PERMISSION_CLASSES`` entry. Because the
-    middleware sets ``request.envoy = None`` on any auth failure, this rejects
-    unauthenticated and failed-auth requests that would otherwise pass through.
-    """
+    """Fail-closed authentication: require a resolved Envoy identity (intended as the platform-wide default permission class)."""
 
     message = "Authentication required."
 
@@ -103,21 +63,7 @@ class HasEnvoy(BasePermission):
 
 
 class EnvoyActionPermissions(HasEnvoy):
-    """Per-action codename gate for viewsets.
-
-    Requires a resolved Envoy identity (via :class:`HasEnvoy`) and, when the view maps the
-    current action to a permission codename, that the caller holds it. The required codename
-    is resolved from, in order:
-
-    1. ``view.get_required_permission()`` if the view defines it (returns a codename or
-       ``None``); this is what ``BaseViewSet`` implements from ``permission_module`` +
-       ``required_permissions``.
-    2. otherwise ``view.required_permissions[view.action]``.
-
-    A resolved value of ``None`` means "no explicit gate": the action is allowed for any
-    authenticated caller (reads stay open to tenant members; a service opts individual
-    writes into enforcement by mapping them).
-    """
+    """Per-action codename gate: requires a resolved Envoy identity and, when the view maps the current action to a permission, that the caller holds it."""
 
     message = "You do not have permission to perform this action."
 
@@ -139,12 +85,7 @@ class EnvoyActionPermissions(HasEnvoy):
 
 
 class EnvoyObjectOrgOwnership(BasePermission):
-    """Object-level org ownership gate for writes.
-
-    Authenticated reads are untouched (tenants keep seeing org-0 shared rows). On a write,
-    a tenant caller must own an object with an explicit ``organization_id``. Platform
-    callers (``organization == 0`` or ``is_superuser``) are exempt.
-    """
+    """Object-level ownership gate: writes require the caller's organization to own the object; reads and platform callers are exempt."""
 
     message = "This record belongs to another organization."
 
@@ -163,14 +104,7 @@ class EnvoyObjectOrgOwnership(BasePermission):
 
 
 def require_permissions(*codenames: str, require_all: bool = True) -> type[BasePermission]:
-    """Build a permission class requiring the given codename(s).
-
-    Use on ``APIView`` / ``@action`` endpoints that sit outside a viewset CRUD map::
-
-        permission_classes = [require_permissions("gateway-config-apply")]
-
-    ``require_all=False`` requires *any* of the codenames instead of all.
-    """
+    """Build a permission class requiring the given codename(s) (``require_all=False`` for any-of instead of all-of)."""
 
     required: tuple[str, ...] = tuple(codenames)
 
