@@ -5,6 +5,7 @@ dict (as the middleware sets it) and a lightweight view stub mirroring ``BaseVie
 """
 
 from types import SimpleNamespace
+from typing import ClassVar
 
 from rest_framework.permissions import SAFE_METHODS
 
@@ -19,8 +20,8 @@ from envoy_pyauth.permissions import (
 
 
 class Req:
-    def __init__(self, perms=None, method="POST"):
-        self.envoy = None if perms is None else {"permissions": list(perms)}
+    def __init__(self, perms=None, method="POST", organization=7):
+        self.envoy = None if perms is None else {"permissions": list(perms), "organization": organization}
         self.method = method
 
 
@@ -30,7 +31,7 @@ class View:
     Reads (safe HTTP methods) stay open by default; only writes are gated.
     """
 
-    _VERB = {
+    _VERB: ClassVar[dict[str, str]] = {
         "create": "edit",
         "update": "edit",
         "partial_update": "edit",
@@ -133,7 +134,9 @@ def test_resolve_required_permission_canonical():
     assert resolve_required_permission(_ResolverView(action="retrieve", module="tag", method="GET")) is None
     # Writes derive edit/delete.
     assert resolve_required_permission(_ResolverView(action="create", module="tag", method="POST")) == "tag-edit"
-    assert resolve_required_permission(_ResolverView(action="partial_update", module="tag", method="PATCH")) == "tag-edit"
+    assert (
+        resolve_required_permission(_ResolverView(action="partial_update", module="tag", method="PATCH")) == "tag-edit"
+    )
     assert resolve_required_permission(_ResolverView(action="destroy", module="tag", method="DELETE")) == "tag-delete"
     # Custom write action defaults to edit; explicit override wins.
     assert resolve_required_permission(_ResolverView(action="sync", module="tag", method="POST")) == "tag-edit"
@@ -156,7 +159,7 @@ class OrgReq:
     """Request stub carrying only the envoy org identity."""
 
     def __init__(self, org=None, method="PATCH", is_superuser=False, envoy=True):
-        self.envoy = {"organization": org, "is_superuser": is_superuser} if envoy else None
+        self.envoy = {"organization": org, "is_superuser": is_superuser, "permissions": []} if envoy else None
         self.method = method
 
 
@@ -185,16 +188,22 @@ def test_object_ownership_stringly_false_superuser_not_exempt():
     assert gate.has_object_permission(OrgReq(org=7, is_superuser="False"), View(), _obj(9)) is False
 
 
-def test_object_ownership_no_envoy_falls_open():
-    # Authentication is HasEnvoy's job; this gate only compares orgs.
+def test_object_ownership_no_envoy_fails_closed():
     gate = EnvoyObjectOrgOwnership()
-    assert gate.has_object_permission(OrgReq(envoy=False), View(), _obj(7)) is True
+    assert gate.has_object_permission(OrgReq(envoy=False), View(), _obj(7)) is False
+    assert gate.has_object_permission(OrgReq(envoy=False, method="GET"), View(), _obj(7)) is False
 
 
-def test_object_ownership_unowned_object_allowed():
+def test_object_ownership_unowned_object_denied():
     gate = EnvoyObjectOrgOwnership()
-    assert gate.has_object_permission(OrgReq(org=7), View(), _obj(None)) is True
-    assert gate.has_object_permission(OrgReq(org=7), View(), SimpleNamespace()) is True
+    assert gate.has_object_permission(OrgReq(org=7), View(), _obj(None)) is False
+    assert gate.has_object_permission(OrgReq(org=7), View(), SimpleNamespace()) is False
+
+
+def test_debug_mode_does_not_bypass_permissions(monkeypatch):
+    monkeypatch.setenv("DJANGO_DEBUG", "TRUE")
+    assert HasEnvoy().has_permission(Req(perms=None), View()) is False
+    assert has_permissions(Req(["x"]), ["not-x"]) is False
 
 
 def test_object_ownership_tolerates_string_organizations():

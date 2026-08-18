@@ -1,5 +1,5 @@
 import os
 
-# common.py reads DJANGO_DEBUG at import time; default it for the test process so importing
-# envoy_pyauth doesn't KeyError. Individual tests exercising the debug bypass set it explicitly.
+# Keep the compatibility setting deterministic; authorization never consults it.
 os.environ.setdefault("DJANGO_DEBUG", "FALSE")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "envoy_pyauth.mypy_settings")

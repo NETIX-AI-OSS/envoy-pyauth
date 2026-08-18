@@ -14,8 +14,8 @@ The middleware is the integration boundary with your auth service. Decorators an
 
 1. **Incoming request** enters Django middleware chain.
 2. **Authorization token resolution**:
-   - First from `request.META["HTTP_AUTHORIZATION"]`.
-   - Fallback from `USER_SVC_AUTH` environment variable.
+   - Exclusively from `request.META["HTTP_AUTHORIZATION"]`.
+   - A missing caller header never inherits the pod's outbound service credential.
 3. **Auth service call**:
    - URL: `USER_AUTH_SVC_URL` + `/auth/me/`
    - Default base URL: `http://user-management-auth.backend:8001`
@@ -25,6 +25,7 @@ The middleware is the integration boundary with your auth service. Decorators an
 5. **View execution phase**:
    - Decorators evaluate `request.envoy`.
    - Query helpers use `request.envoy["organization"]` for scoping.
+   - Missing or malformed identity fails closed.
 
 ## Context contract (`request.envoy`)
 
@@ -33,18 +34,21 @@ Expected keys (as used by library logic):
 - `permissions` (iterable of permission strings)
 - `organization` (organization identifier; `0` used as global/system value)
 
-Additional keys (example from debug payload) may include:
+Additional keys returned by the identity service may include:
 
 - `username`, `is_superuser`, `user_type`, `site_id`, `groups`, `feature_flags`
 
 ## Environment variable contract
 
-- `DJANGO_DEBUG` (required by current implementation)
-  - Parsed as string equality check: `os.environ["DJANGO_DEBUG"] == "TRUE"`
+- `DJANGO_DEBUG` (optional compatibility setting)
+  - Never changes authentication or authorization outcomes.
 - `USER_AUTH_SVC_URL` (optional)
   - Default: `http://user-management-auth.backend:8001`
-- `USER_SVC_AUTH` (optional)
-  - Used when request header token is not present.
+- `ENVOY_AUTH_CACHE_TTL` (optional)
+  - Requested positive-cache lifetime; hard-capped at 30 seconds and JWT expiry.
+
+`USER_SVC_AUTH` is not an inbound setting. Consumers may continue to use it explicitly
+in outbound HTTP clients, but middleware will not substitute it for caller identity.
 
 ## Dependency boundaries
 

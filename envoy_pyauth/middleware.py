@@ -1,6 +1,10 @@
+import base64
+import binascii
 import hashlib
+import json
 import logging
 import os
+import time
 from typing import Any
 
 import requests
@@ -8,24 +12,15 @@ from django.core.cache import cache
 from django.http import HttpResponseBase
 from django.utils.deprecation import MiddlewareMixin
 
-from .common import DJANGO_DEBUG
 from .types import EnvoyHttpRequest
 
 logger = logging.getLogger(__name__)
 
 _AUTH_TIMEOUT = float(os.environ.get("ENVOY_AUTH_TIMEOUT", "10"))
 _CACHE_TTL = int(os.environ.get("ENVOY_AUTH_CACHE_TTL", "300"))
-
-_DEBUG_PAYLOAD: dict[str, Any] = {
-    "username": "DEBUG",
-    "is_superuser": "true",
-    "user_type": "organization",
-    "organization": 0,
-    "site_id": None,
-    "permissions": ["sample-permission"],
-    "groups": ["groups"],
-    "feature_flags": "feature_1",
-}
+# Security changes (account disable, org/permission changes, credential revocation)
+# must converge quickly even if a consumer asks for a much longer cache lifetime.
+_MAX_CACHE_TTL = 30
 
 
 class AuthorizationMiddleware(MiddlewareMixin):
@@ -39,11 +34,13 @@ class AuthorizationMiddleware(MiddlewareMixin):
       ``POST /auth/scram/api-key-login/`` for a Bearer authToken, then resolved
       against ``/auth/me/``. This is the Haystack 4 service-to-service path.
 
-    On any failure ``request.envoy`` is set to ``None`` (consistent with prior
-    behavior). Positive results are cached in Django's cache backend, keyed by
-    a SHA-256 of the raw header, for ``ENVOY_AUTH_CACHE_TTL`` seconds (default
-    300) so a single tag-service ↔ asset-service hop doesn't trigger 3 HTTP
-    calls back to user-management on every request.
+    Only the inbound ``Authorization`` header is considered. Service credentials
+    remain available to outbound clients through their explicit environment
+    variables, but are never substituted for a missing caller credential.
+
+    On any failure ``request.envoy`` is set to ``None``. Positive results are
+    cached under a SHA-256 of the raw header for at most 30 seconds, and never
+    beyond a JWT's ``exp`` claim.
     """
 
     def process_view(
@@ -58,13 +55,12 @@ class AuthorizationMiddleware(MiddlewareMixin):
         ):
             request.envoy = None
             return None
-        if DJANGO_DEBUG:
-            request.envoy = _DEBUG_PAYLOAD
-            return None
         try:
-            auth_header = request.META.get("HTTP_AUTHORIZATION") or os.getenv("USER_SVC_AUTH")
+            auth_header = request.META.get("HTTP_AUTHORIZATION")
             request.envoy = _resolve(auth_header) if auth_header else None
-        except Exception as exc:  # pragma: no cover - defensive
+        # Cache backends and integrations can raise implementation-specific errors.
+        # The security invariant is to clear identity on every unexpected failure.
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive
             logger.warning("envoy_pyauth: %s", exc)
             request.envoy = None
         return None
@@ -85,13 +81,45 @@ def _resolve(auth_header: str) -> dict[str, Any] | None:
                 payload = _fetch_me(f"Bearer {bearer}")
 
     if payload is not None:
-        cache.set(cache_key, payload, timeout=_CACHE_TTL)
+        timeout = _cache_timeout(auth_header)
+        if timeout > 0:
+            cache.set(cache_key, payload, timeout=timeout)
     return payload
 
 
 def _cache_key(auth_header: str) -> str:
     digest = hashlib.sha256(auth_header.encode("utf-8")).hexdigest()
-    return f"envoy_pyauth:auth:{digest}"
+    return f"envoy_pyauth:auth:v2:{digest}"
+
+
+def _cache_timeout(auth_header: str) -> int:
+    timeout = max(0, min(_CACHE_TTL, _MAX_CACHE_TTL))
+    if timeout == 0 or not auth_header.lower().startswith("bearer "):
+        return timeout
+    token = auth_header.split(None, 1)[1].strip()
+    parts = token.split(".")
+    if len(parts) != 3:
+        return timeout
+    try:
+        segment = parts[1] + "=" * (-len(parts[1]) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(segment).decode("utf-8"))
+        expires_at = float(claims["exp"])
+    except binascii.Error, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError:
+        return timeout
+    return max(0, min(timeout, int(expires_at - time.time())))
+
+
+def _identity_payload(value: Any) -> dict[str, Any] | None:
+    """Validate the minimum ``/auth/me/`` contract before trusting or caching it."""
+    if not isinstance(value, dict):
+        return None
+    organization = value.get("organization")
+    permissions = value.get("permissions")
+    if organization in (None, "", "bogus") or not isinstance(permissions, (list, tuple, set, frozenset)):
+        return None
+    payload = dict(value)
+    payload["permissions"] = list(permissions)
+    return payload
 
 
 def _fetch_me(auth_header: str) -> dict[str, Any] | None:
@@ -102,7 +130,11 @@ def _fetch_me(auth_header: str) -> dict[str, Any] | None:
         logger.warning("envoy_pyauth: /auth/me/ unreachable: %s", exc)
         return None
     if resp.status_code == 200:
-        return resp.json()
+        try:
+            return _identity_payload(resp.json())
+        except requests.exceptions.JSONDecodeError:
+            logger.warning("envoy_pyauth: /auth/me/ returned invalid JSON")
+            return None
     logger.debug("envoy_pyauth: /auth/me/ returned %s", resp.status_code)
     return None
 
