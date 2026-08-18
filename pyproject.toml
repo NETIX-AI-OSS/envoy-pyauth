@@ -2,9 +2,7 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-# Explicit package list: a stray root __init__.py otherwise breaks setuptools' automatic
-# flat-layout discovery, producing a wheel that silently omits the envoy_pyauth submodules
-# (e.g. permissions.py). Keep this in sync when adding top-level packages.
+# Root __init__.py breaks flat-layout discovery; list packages here.
 [tool.setuptools]
 packages = ["envoy_pyauth"]
 
@@ -23,8 +21,7 @@ dependencies = [
     "Django>=5.2.12,!=6.0.0,!=6.0.1,!=6.0.2",
     "djangorestframework>=3.15.2",
     "requests>=2.32.3",
-    # __init__.py calls django_stubs_ext.monkeypatch() at import time, so it must be a
-    # runtime (not dev-only) dependency or every consumer venv without it fails to import.
+    # django-stubs-ext must be a runtime dep: __init__.py imports it eagerly.
     "django-stubs-ext>=5.1.0"
 ]
 version = "2.0.0"
@@ -70,6 +67,5 @@ venvPath = "."
 venv = ".venv"
 
 [tool.ruff.lint]
-# The checkout directory contains a hyphen; Ruff otherwise reports every module
-# below it as an invalid import name even though the packaged module is envoy_pyauth.
+# Hyphenated checkout dir: Ruff flags valid imports as bad module names.
 ignore = ["N999"]

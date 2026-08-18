@@ -32,6 +32,5 @@ jobs:
       - name: Audit runtime dependencies
         run: |
           uv export --locked --no-dev --no-emit-project --output-file requirements-audit.txt
-          # uv export is already a fully pinned transitive graph; avoid a second
-          # resolver/temporary venv and audit exactly those locked versions.
+          # uv export is fully pinned; audit those exact locked versions.
           uv run pip-audit --disable-pip --no-deps --requirement requirements-audit.txt

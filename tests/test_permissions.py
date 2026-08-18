@@ -60,8 +60,7 @@ def test_has_envoy_fails_closed_for_unauthenticated():
 
 
 def test_action_gate_reads_open_when_module_declared():
-    # Reads stay open even when a module is declared, so a fresh <module>-view codename
-    # that no role holds yet cannot black out reads.
+    # Reads stay open when a module is declared; unheld codenames stay open.
     gate = EnvoyActionPermissions()
     assert gate.has_permission(Req([]), View(action="list", module="tag", method="GET")) is True
     assert gate.has_permission(Req([]), View(action="retrieve", module="tag", method="GET")) is True
