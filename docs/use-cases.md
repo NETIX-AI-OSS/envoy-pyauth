@@ -45,6 +45,11 @@ def post(self, request):
 
 This can be used for list APIs, report endpoints, and model-backed services where a tenant boundary is required.
 
+Organizations that have been migrated onto their own cloned primitives set
+`organization_isolated` in the auth snapshot; for those callers the global (`0`) leg is
+dropped and only their own rows resolve. The flag is per-organization and reversible, so
+services roll onto it one tenant at a time rather than in a single fleet-wide switch.
+
 ## 5) Integration during local development
 
 Attach a representative `request.envoy` identity in tests. Debug mode intentionally does

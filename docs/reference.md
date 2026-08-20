@@ -72,7 +72,7 @@ Behavior:
 
 ### `class EnvoyQueryFilter`
 
-#### `get_queryset(request, model, session_customer_filter, field_name="organization_id", delete_filter=True)`
+#### `get_queryset(request, model, session_customer_filter, field_name="organization_id", delete_filter=True, include_shared=None)`
 
 Returns a model queryset filtered according to request/envoy context.
 
@@ -91,15 +91,55 @@ Fallback results:
 
 Scoped branch:
 
-- Filters on `field_name__in=[0, request.envoy["organization"]]`
+- Filters on `field_name__in=scoped_org_ids(request, include_shared)` — `[0, org]` while the
+  caller's organization still reads the shared template catalog, `[org]` once it is isolated
 - Applies `is_deleted=False` when `delete_filter=True`
 - Orders by `id` in delete-filter branch
 
 Invalid identity behavior: returns `model.objects.none()`.
 
-#### `filter_queryset(request, queryset, session_customer_filter, field_name="organization_id", delete_filter=True)`
+#### `filter_queryset(request, queryset, session_customer_filter, field_name="organization_id", delete_filter=True, include_shared=None)`
 
 Same branching behavior as `get_queryset`, but operates on an existing queryset instance.
+
+### `organization_is_isolated(request)`
+
+Whether the caller's organization owns its primitives and must no longer read org 0. Reads
+`request.envoy["organization_isolated"]`, which user-management emits in the `/auth/me/`
+snapshot from `Organization.primitive_isolation_enabled`.
+
+- String-tolerant: `"true"` / `"false"` are read as booleans (`bool("false")` is `True`, which
+  would otherwise invert the flag for every payload that carries it as a string).
+- Absent flag ⇒ `False`, so payloads predating the field — including ones cached for up to
+  `ENVOY_AUTH_CACHE_TTL` across a deploy — keep the shared-catalog behavior.
+
+### `scoped_org_ids(request, include_shared=None)`
+
+The organization ids a tenant caller may read: `[0, org]` or `[org]`. `include_shared`
+overrides the flag in both directions.
+
+### `TEMPLATE_ORG_ID`
+
+`0` — the platform template catalog organization.
+
+## Module: `envoy_pyauth.serializers`
+
+### `class ScopedRelatedFieldsMixin`
+
+Narrows related-field querysets to the caller's Envoy scope via a
+`scoped_related_fields = {field_name: org_traversal}` map, so a write payload cannot reference
+another organization's row. Follows the caller's isolation flag, so an isolated org can no
+longer name org-0 primitives in a payload.
+
+### `scoped_object_or_error(request, model, pk, *, field_name="organization_id")`
+
+Scope-resolves a raw `*_id` value from an action body, raising `ValidationError` when it is
+not visible to the caller.
+
+### `SCOPED_FK_ERROR`
+
+The shared message for both "not yours" and "not there", so cross-tenant probes cannot tell
+the two apart.
 
 ## Module: `envoy_pyauth.common`
 
