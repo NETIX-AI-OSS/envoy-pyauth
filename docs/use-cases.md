@@ -38,12 +38,19 @@ def post(self, request):
 
 ## 4) Organization-scoped data access
 
-`EnvoyQueryFilter` supports multi-tenant access behavior by filtering `organization_id` against:
-
-- global records (`0`), and
-- the organization in `request.envoy["organization"]`.
+`EnvoyQueryFilter` scopes every tenant caller's queryset to the organization in
+`request.envoy["organization"]`.
 
 This can be used for list APIs, report endpoints, and model-backed services where a tenant boundary is required.
+
+Before v3.0.0 this also unioned in the global organization (`0`), the shared template catalog
+every tenant read from. The org-0 primitive cloning migration gave each organization its own
+copy of those primitives and repointed their rows onto it, so the union has been removed;
+`include_shared=True` re-admits it for the few platform-facing endpoints that genuinely
+aggregate across the template org.
+
+Platform callers (`organization == 0`) are unchanged: they keep the unscoped global view, which
+is what makes acting as org 0 the way to edit the template catalog.
 
 ## 5) Integration during local development
 

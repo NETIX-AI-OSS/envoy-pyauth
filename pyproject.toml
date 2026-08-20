@@ -24,7 +24,7 @@ dependencies = [
     # django-stubs-ext must be a runtime dep: __init__.py imports it eagerly.
     "django-stubs-ext>=5.1.0"
 ]
-version = "2.0.0"
+version = "3.0.0"
 
 [tool.black]
 line-length = 120
