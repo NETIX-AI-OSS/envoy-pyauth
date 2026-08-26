@@ -22,7 +22,7 @@ class Req:
 
 
 class View:
-    """Mirror of BaseViewSet.get_required_permission for test purposes; reads stay open, only writes are gated."""
+    """Mirror of BaseViewSet.get_required_permission for test purposes."""
 
     _VERB: ClassVar[dict[str, str]] = {
         "create": "edit",
@@ -31,10 +31,11 @@ class View:
         "destroy": "delete",
     }
 
-    def __init__(self, action=None, module=None, req_map=None, method="GET"):
+    def __init__(self, action=None, module=None, req_map=None, method="GET", allow_ungated_safe_methods=False):
         self.action = action
         self.permission_module = module
         self.required_permissions = req_map or {}
+        self.allow_ungated_safe_methods = allow_ungated_safe_methods
         self.request = SimpleNamespace(method=method)
 
     def get_required_permission(self):
@@ -43,7 +44,9 @@ class View:
         if not self.permission_module:
             return None
         if self.request.method in SAFE_METHODS:
-            return None
+            if self.allow_ungated_safe_methods:
+                return None
+            return f"{self.permission_module}-view"
         return f"{self.permission_module}-{self._VERB.get(self.action, 'edit')}"
 
 
@@ -52,11 +55,18 @@ def test_has_envoy_fails_closed_for_unauthenticated():
     assert HasEnvoy().has_permission(Req(perms=[]), View()) is True
 
 
-def test_action_gate_reads_open_when_module_declared():
-    # Reads stay open when a module is declared; unheld codenames stay open.
+def test_action_gate_reads_require_view_permission_when_module_declared():
     gate = EnvoyActionPermissions()
-    assert gate.has_permission(Req([]), View(action="list", module="tag", method="GET")) is True
-    assert gate.has_permission(Req([]), View(action="retrieve", module="tag", method="GET")) is True
+    assert gate.has_permission(Req([]), View(action="list", module="tag", method="GET")) is False
+    assert gate.has_permission(Req(["tag-view"]), View(action="list", module="tag", method="GET")) is True
+    assert gate.has_permission(Req([]), View(action="retrieve", module="tag", method="GET")) is False
+    assert gate.has_permission(Req(["tag-view"]), View(action="retrieve", module="tag", method="GET")) is True
+
+
+def test_action_gate_allows_explicit_ungated_safe_method_opt_out():
+    gate = EnvoyActionPermissions()
+    view = View(action="list", module="tag", method="GET", allow_ungated_safe_methods=True)
+    assert gate.has_permission(Req([]), view) is True
 
 
 def test_action_gate_explicit_read_map_still_enforced():
@@ -88,8 +98,9 @@ def test_action_gate_custom_action_override_and_default():
     # custom WRITE action with a module but no override defaults to <module>-edit
     assert gate.has_permission(Req([]), View(action="sync", module="tag", method="POST")) is False
     assert gate.has_permission(Req(["tag-edit"]), View(action="sync", module="tag", method="POST")) is True
-    # custom READ action with a module stays open
-    assert gate.has_permission(Req([]), View(action="preview", module="tag", method="GET")) is True
+    # custom READ action with a module defaults to <module>-view
+    assert gate.has_permission(Req([]), View(action="preview", module="tag", method="GET")) is False
+    assert gate.has_permission(Req(["tag-view"]), View(action="preview", module="tag", method="GET")) is True
 
 
 def test_require_permissions_factory():
@@ -111,19 +122,26 @@ def test_has_permissions_imperative():
 class _ResolverView:
     """View stub with NO get_required_permission override — exercises the canonical resolver."""
 
-    def __init__(self, action=None, module=None, req_map=None, method="GET"):
+    def __init__(self, action=None, module=None, req_map=None, method="GET", allow_ungated_safe_methods=False):
         self.action = action
         self.permission_module = module
         self.required_permissions = req_map or {}
+        self.allow_ungated_safe_methods = allow_ungated_safe_methods
         self.request = SimpleNamespace(method=method)
 
 
 def test_resolve_required_permission_canonical():
     # No module -> ungated.
     assert resolve_required_permission(_ResolverView(action="list")) is None
-    # Reads stay open even with a module declared.
-    assert resolve_required_permission(_ResolverView(action="list", module="tag", method="GET")) is None
-    assert resolve_required_permission(_ResolverView(action="retrieve", module="tag", method="GET")) is None
+    # Reads derive view unless the endpoint explicitly opts out.
+    assert resolve_required_permission(_ResolverView(action="list", module="tag", method="GET")) == "tag-view"
+    assert resolve_required_permission(_ResolverView(action="retrieve", module="tag", method="GET")) == "tag-view"
+    assert (
+        resolve_required_permission(
+            _ResolverView(action="list", module="tag", method="GET", allow_ungated_safe_methods=True)
+        )
+        is None
+    )
     # Writes derive edit/delete.
     assert resolve_required_permission(_ResolverView(action="create", module="tag", method="POST")) == "tag-edit"
     assert (
@@ -144,7 +162,8 @@ def test_action_gate_uses_canonical_resolver_without_view_method():
     gate = EnvoyActionPermissions()
     assert gate.has_permission(Req(["tag-edit"]), _ResolverView(action="create", module="tag", method="POST")) is True
     assert gate.has_permission(Req([]), _ResolverView(action="create", module="tag", method="POST")) is False
-    assert gate.has_permission(Req([]), _ResolverView(action="list", module="tag", method="GET")) is True
+    assert gate.has_permission(Req([]), _ResolverView(action="list", module="tag", method="GET")) is False
+    assert gate.has_permission(Req(["tag-view"]), _ResolverView(action="list", module="tag", method="GET")) is True
 
 
 class OrgReq:
