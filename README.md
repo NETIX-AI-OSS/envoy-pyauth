@@ -69,6 +69,11 @@ queryset = EnvoyQueryFilter.filter_queryset(
 
 ## Behavior Notes
 
+- A viewset with `permission_module = "tag"` requires `tag-view` for safe
+  methods, `tag-edit` for writes, and `tag-delete` for destroy by default.
+  Endpoints intentionally readable by every authenticated tenant member must
+  set `allow_ungated_safe_methods = True`; the opt-out should be rare and
+  reviewed.
 - Authentication and authorization remain fail-closed when `DJANGO_DEBUG == "TRUE"`.
   Local tests must attach an explicit `request.envoy` identity or mark a genuinely
   public view with `@envoy_auth_exempt`.
@@ -101,6 +106,14 @@ not used as a fallback for an inbound request that lacks `Authorization`.
   `allowed_services=(...)` declaration.
 - Code that deliberately disables tenant filtering must still supply a resolved
   identity. Unknown object ownership is now denied for writes.
+
+## Upgrading to 4.0
+
+- Safe methods on viewsets declaring `permission_module` now require the
+  corresponding `<module>-view` codename.
+- Before upgrading consumers, grant the existing view codenames to intended
+  roles and mark deliberately ungated authenticated reads with
+  `allow_ungated_safe_methods = True`.
 
 ## License
 

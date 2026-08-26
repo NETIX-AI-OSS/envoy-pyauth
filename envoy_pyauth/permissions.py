@@ -28,7 +28,6 @@ def _has_envoy_identity(request) -> bool:
     )
 
 
-# Reads are ungated by default so an unheld <module>-view stays open.
 _WRITE_VERB_BY_ACTION = {
     "create": "edit",
     "update": "edit",
@@ -38,7 +37,13 @@ _WRITE_VERB_BY_ACTION = {
 
 
 def resolve_required_permission(view) -> str | None:
-    """Canonical per-action codename resolver for BaseViewSet-style viewsets: explicit map > ungated (no module) > open reads > derived edit/delete for writes."""
+    """Resolve an action codename, requiring ``<module>-view`` for safe methods by default.
+
+    A view that intentionally exposes authenticated reads may set
+    ``allow_ungated_safe_methods = True``. Keeping that exception explicit makes
+    new ``permission_module`` declarations fail closed without preventing a
+    reviewed public-within-the-tenant endpoint from opting out.
+    """
     action = getattr(view, "action", None)
     req_map = getattr(view, "required_permissions", None) or {}
     if action is not None and action in req_map:
@@ -48,7 +53,9 @@ def resolve_required_permission(view) -> str | None:
         return None
     method = getattr(getattr(view, "request", None), "method", "GET")
     if method in SAFE_METHODS:
-        return None
+        if getattr(view, "allow_ungated_safe_methods", False) is True:
+            return None
+        return f"{module}-view"
     verb = _WRITE_VERB_BY_ACTION.get(action if isinstance(action, str) else "", "edit")
     return f"{module}-{verb}"
 
