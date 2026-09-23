@@ -43,11 +43,45 @@ def post(self, request):
 
 This can be used for list APIs, report endpoints, and model-backed services where a tenant boundary is required.
 
-Before v3.0.0 this also unioned in the global organization (`0`), the shared template catalog
-every tenant read from. The org-0 primitive cloning migration gave each organization its own
-copy of those primitives and repointed their rows onto it, so the union has been removed;
-`include_shared=True` re-admits it for the few platform-facing endpoints that genuinely
-aggregate across the template org.
+### The shared template catalog and the per-org isolation flag
+
+Organization `0` is the shared platform template catalog. The org-0 primitive cloning
+migration gives each organization its own copy of those primitives and repoints its rows onto
+them; whether a tenant still reads organization `0` alongside its own is decided **per
+organization** by user-management's `Organization.primitive_isolation_enabled`, which
+`/auth/me/` emits as `organization_isolated` and the middleware attaches to `request.envoy`:
+
+| `request.envoy["organization_isolated"]` | Tenant reads |
+| --- | --- |
+| `False` (boolean) | `[0, org]` — still sharing the template catalog |
+| `True` | `[org]` — isolated onto its own clones |
+| absent / `None` / anything else | `[org]` — the safe default |
+
+`include_shared=True` on `get_queryset`/`filter_queryset` forces `[0, org]` for the few
+platform-facing endpoints that genuinely aggregate across the template org;
+`include_shared=False` forces `[org]`.
+
+Restoring the union only widens **reads**. Writes to org-0 rows are still refused for tenant
+callers by `EnvoyObjectOrgOwnership`, which checks the object's own `organization_id` and
+never consults the union.
+
+### Cutover and rollback
+
+Both directions are a data change in user-management, not a library release:
+
+```bash
+# cutover (only after that org's repoint verification gate reports zero org-0 references)
+python manage.py set_primitive_isolation --org 9 --on
+# rollback: restores the [0, org] union for org 9 only
+python manage.py set_primitive_isolation --org 9 --off
+python manage.py set_primitive_isolation --all --status
+```
+
+Flipping `primitive_isolation_enabled` off and bumping that organization's users'
+`auth_version` (the command does both) restores the union for that organization. The bump
+drops user-management's cached `/auth/me/` payloads; each service's own identity cache holds a
+payload for at most 30 seconds, so the change is fleet-wide within that window. No service
+needs a redeploy or a different library pin.
 
 Platform callers (`organization == 0`) are unchanged: they keep the unscoped global view, which
 is what makes acting as org 0 the way to edit the template catalog.

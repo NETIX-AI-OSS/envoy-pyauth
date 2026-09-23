@@ -23,6 +23,37 @@ work on `main`; do not treat the declared version as a published release.
   Before pinning a service to this version, grant the existing `<module>-view` codenames to
   the intended roles and mark deliberately ungated reads with the opt-out — otherwise reads
   that worked before will return 403.
+- **Tenant scoping honours the per-org isolation flag again.** 3.0.0 removed the `[0, org]`
+  read union unconditionally and made `organization_is_isolated()` a constant, which also threw
+  away the per-organization rollback lever the cloning migration was designed around:
+  undoing a bad cutover meant changing a library pin in every service. `EnvoyQueryFilter`
+  once again reads `request.envoy["organization_isolated"]` — the `/auth/me/` projection of
+  user-management's `Organization.primitive_isolation_enabled` — and for a tenant caller:
+  - flag is the boolean `False` → `[0, org]` (the organization still shares the template catalog);
+  - flag `True`, key absent, `None` or any non-boolean value (e.g. the string `"false"`) →
+    `[org]`, identical to 3.0.0. Only an explicit `False` can widen a queryset.
+
+  `include_shared=True` still forces the union for the call sites that need it;
+  `include_shared=False` now forces own-org-only regardless of the flag, and the default
+  `include_shared=None` follows the flag. Platform callers (organization `0`) keep the unscoped
+  view. `EnvoyObjectOrgOwnership` is unchanged: it never consulted the union, so org-0
+  rows stay read-only to tenants even while their organization shares the catalog.
+
+  **Rollback semantics.** Flipping `primitive_isolation_enabled` off and bumping that
+  organization's `auth_version` (`manage.py set_primitive_isolation --org N --off` does both)
+  restores the union for that organization within the ≤30 s identity cache — no redeploy, no
+  pin change. `--on` re-isolates it.
+
+  **Before bumping a pin from 3.0.0 to 4.0.0**, run
+  `manage.py set_primitive_isolation --all --status` in user-management for that environment:
+  every organization reported as `shared` (flag off) regains the org-0 union on upgrade. Flip
+  those that are already cut over to `--on` first, or accept the union for them deliberately.
+- `organization_is_isolated(request)` is no longer deprecated: it returns `False` only for an
+  explicit boolean `False` flag, and `True` otherwise (including when there is no identity).
+
+### Added
+
+- `envoy_pyauth.utils.ISOLATION_FLAG_KEY` (`"organization_isolated"`).
 
 ### Changed
 

@@ -91,13 +91,20 @@ Fallback results:
 
 Scoped branch:
 
-- Filters on `field_name__in=scoped_org_ids(request, include_shared)` — `[org]`. The `[0, org]`
-  union was removed in v3.0.0: every organization now owns cloned primitives, so unioning the
-  template catalog back in would only re-expose the rows the migration moved everyone off
+- Filters on `field_name__in=scoped_org_ids(request, include_shared)`:
+  - `[0, org]` when the caller's organization is still sharing the template catalog —
+    `request.envoy["organization_isolated"] is False` (user-management's
+    `Organization.primitive_isolation_enabled` is off);
+  - `[org]` otherwise: flag `True`, key absent, or any non-boolean value.
+- `include_shared=True` forces `[0, org]` and `include_shared=False` forces `[org]`, regardless
+  of the flag. The default `include_shared=None` follows the flag.
 - Applies `is_deleted=False` when `delete_filter=True`
 - Orders by `id` in delete-filter branch
 
 Invalid identity behavior: returns `model.objects.none()`.
+
+Platform callers (organization `0`, numeric or string) are never scoped: neither the flag nor
+`include_shared` narrows them.
 
 #### `filter_queryset(request, queryset, session_customer_filter, field_name="organization_id", delete_filter=True, include_shared=None)`
 
@@ -105,15 +112,23 @@ Same branching behavior as `get_queryset`, but operates on an existing queryset 
 
 ### `organization_is_isolated(request)`
 
-**Deprecated in v3.0.0** — returns `True` for any resolved tenant caller. Every organization
-owns its primitives now, so the flag no longer varies and code branching on it can be deleted.
+Whether a tenant caller reads only its own organization. Returns `False` only when
+`request.envoy["organization_isolated"]` is the boolean `False`; a missing key, `None`, `True`,
+a string such as `"false"`, or a missing identity all return `True`. The flag can widen a
+queryset only when user-management states it explicitly.
+
+Restored in 4.0.0 as the per-organization cutover **and rollback** lever (it was a constant
+`True` in 3.0.0). See [Use Cases](use-cases.md#4-organization-scoped-data-access) for the
+rollback procedure.
 
 ### `scoped_org_ids(request, include_shared=None)`
 
-The organization ids a tenant caller may read: `[org]`, or `[0, org]` when `include_shared=True`
-is passed explicitly. It is never derived from the request — an organization that still needed
-the union would be one whose repoint never finished, and silently widening its queryset is how
-that goes unnoticed.
+The organization ids a tenant caller may read: `[0, org]` when `include_shared=True`, or when
+`include_shared` is `None` and `organization_is_isolated(request)` is `False`; `[org]` otherwise.
+
+### `ISOLATION_FLAG_KEY`
+
+`"organization_isolated"` — the `/auth/me/` snapshot key the flag rides in.
 
 ### `TEMPLATE_ORG_ID`
 

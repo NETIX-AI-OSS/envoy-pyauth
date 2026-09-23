@@ -114,6 +114,13 @@ not used as a fallback for an inbound request that lacks `Authorization`.
 - Before upgrading consumers, grant the existing view codenames to intended
   roles and mark deliberately ungated authenticated reads with
   `allow_ungated_safe_methods = True`.
+- Tenant querysets follow the per-organization isolation flag again: an
+  organization whose `primitive_isolation_enabled` is off (`organization_isolated`
+  is `False` in `/auth/me/`) reads `[0, org]`; every other tenant reads `[org]`
+  as in 3.0.0. Before upgrading a 3.0.0 consumer, run
+  `manage.py set_primitive_isolation --all --status` in user-management and flip
+  already-cut-over organizations `--on`. Rolling an organization back is
+  `set_primitive_isolation --org N --off` — no pin change.
 
 ## License
 

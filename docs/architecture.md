@@ -33,6 +33,8 @@ Expected keys (as used by library logic):
 
 - `permissions` (iterable of permission strings)
 - `organization` (organization identifier; `0` used as global/system value)
+- `organization_isolated` (optional boolean; only an explicit `False` re-admits organization
+  `0` into a tenant's scoped queryset)
 
 Additional keys returned by the identity service may include:
 

@@ -34,11 +34,14 @@ Behavior:
 
 ## Multi-tenant queryset scoping pattern
 
-`EnvoyQueryFilter` uses `organization_id` scoping with support for global rows.
+`EnvoyQueryFilter` uses `organization_id` scoping, admitting the global template rows
+(organization `0`) only for organizations that have not been isolated onto their own clones.
 
 Pattern details:
 
-- For scoped requests, query includes `organization_id in [0, request.envoy["organization"]]`.
+- For scoped requests, query is `organization_id in [request.envoy["organization"]]`, widened
+  to `[0, organization]` only when `request.envoy["organization_isolated"] is False` (or the
+  call passes `include_shared=True`). See [Use Cases](use-cases.md#4-organization-scoped-data-access).
 - Optional soft-delete filtering controlled by `delete_filter`.
 - Supports model-level entry (`get_queryset`) and queryset-level entry (`filter_queryset`).
 - A missing, incomplete, or unresolved identity returns `.none()`, even when the

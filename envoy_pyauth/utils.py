@@ -5,42 +5,55 @@ from django.db.models import Q, QuerySet
 from .types import EnvoyHttpRequest
 
 #: Organization id of the platform template catalog. Platform callers act as this organization
-#: to edit the shared templates; tenant callers no longer read it (see the module note below).
+#: to edit the shared templates; tenant callers read it only while their organization is not
+#: isolated (see :func:`organization_is_isolated`).
 TEMPLATE_ORG_ID = 0
+
+#: Key user-management's ``/auth/me/`` snapshot uses for ``Organization.primitive_isolation_enabled``.
+ISOLATION_FLAG_KEY = "organization_isolated"
 
 
 def organization_is_isolated(request: EnvoyHttpRequest | None) -> bool:
-    """Retained for compatibility; every tenant organization is isolated as of v3.0.0.
+    """Whether a tenant caller reads only its own organization, per the per-org cutover flag.
 
-    The org-0 primitive cloning migration is complete: each organization owns its primitives,
-    so ``organization_isolated`` no longer varies. Callers still reading this flag get ``True``
-    for any resolved tenant caller, and code branching on it can be deleted.
+    user-management rides ``Organization.primitive_isolation_enabled`` to every service as
+    ``request.envoy["organization_isolated"]``. Only an explicit boolean ``False`` means "still
+    sharing the org-0 catalog"; a missing key, ``None``, ``True`` or any non-boolean value (a
+    stale or hand-built payload carrying the string ``"false"``) is isolated. The flag can only
+    ever widen a queryset when user-management says so in so many words.
+
+    Flipping the flag off (``set_primitive_isolation --org N --off``, which also bumps that org's
+    ``auth_version``) restores the ``[0, org]`` union for that organization without a library
+    release: that is the per-org rollback lever.
     """
     envoy = getattr(request, "envoy", None) if request is not None else None
-    return bool(envoy)
+    if not isinstance(envoy, dict):
+        return True
+    return envoy.get(ISOLATION_FLAG_KEY) is not False
 
 
 def scoped_org_ids(request: EnvoyHttpRequest | None, include_shared: bool | None = None) -> list[int]:
-    """The organization ids a tenant caller may read — its own, and only its own.
+    """The organization ids a tenant caller may read: ``[org]``, or ``[0, org]`` while sharing.
 
-    ``include_shared=True`` is the one remaining way to re-admit the org-0 catalog, and it
-    exists for the handful of platform-facing endpoints that genuinely aggregate across the
-    template org. It is never derived from the request any more: an organization that still
-    needed the union would be one whose repoint never finished, and silently widening its
-    queryset is how that goes unnoticed.
+    ``include_shared=None`` (the default) follows the caller's isolation flag — the union is
+    included only when :func:`organization_is_isolated` is ``False``. ``include_shared=True``
+    forces the union for the few platform-facing endpoints that genuinely aggregate across the
+    template org; ``include_shared=False`` forces own-org-only regardless of the flag.
     """
     envoy = cast(dict[str, Any], getattr(request, "envoy", None) or {})
     org_id = envoy["organization"]
+    if include_shared is None:
+        include_shared = not organization_is_isolated(request)
     return [TEMPLATE_ORG_ID, org_id] if include_shared else [org_id]
 
 
 class EnvoyQueryFilter:
     """Scope querysets to the caller's organization.
 
-    As of v3.0.0 a tenant caller sees only its own rows. Before the org-0 primitive cloning
-    migration this unioned in organization 0, the shared template catalog every tenant read
-    from; now each organization owns cloned copies of those primitives, so the union would only
-    re-expose the template rows the migration moved everyone off.
+    A tenant caller sees its own organization, plus organization 0 (the shared template
+    catalog) only while user-management reports its organization as not yet isolated — see
+    :func:`organization_is_isolated` and :func:`scoped_org_ids`. The ``include_shared`` keyword
+    overrides the flag per call.
 
     Platform callers (``organization == 0``) are unchanged: they keep the unscoped global view,
     which is what makes acting as org 0 the sanctioned way to edit the template catalog.
