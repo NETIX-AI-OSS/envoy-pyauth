@@ -9,10 +9,7 @@
 Releases before `v2.0.0` are not covered here: this file was written to close the gap that
 was blocking consumers held at `v2.0.0` from scoping a move to `v3.0.0`.
 
-## Unreleased — 4.0.0
-
-`pyproject.toml` already declares `4.0.0`, but **no `v4.0.0` tag exists**. This is unreleased
-work on `main`; do not treat the declared version as a published release.
+## 4.0.0 — 2026-10-11 (tag `v4.0.0`)
 
 ### Changed — BREAKING
 
