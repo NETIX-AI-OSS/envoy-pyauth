@@ -1,4 +1,4 @@
-"""Unit tests for the reusable DRF permission classes — pure logic, no Django DB."""
+"""Unit tests for the reusable DRF permission classes, pure logic, no Django DB."""
 
 from types import SimpleNamespace
 from typing import ClassVar
@@ -120,7 +120,7 @@ def test_has_permissions_imperative():
 
 
 class _ResolverView:
-    """View stub with NO get_required_permission override — exercises the canonical resolver."""
+    """View stub with NO get_required_permission override, exercises the canonical resolver."""
 
     def __init__(self, action=None, module=None, req_map=None, method="GET", allow_ungated_safe_methods=False):
         self.action = action
@@ -222,7 +222,7 @@ def test_object_ownership_tolerates_string_organizations():
     assert gate.has_object_permission(OrgReq(org="7"), View(), _obj(7)) is True
     assert gate.has_object_permission(OrgReq(org="0"), View(), _obj(7)) is True
     assert gate.has_object_permission(OrgReq(org="7"), View(), _obj(9)) is False
-    # "bogus" is the unresolved-organization sentinel — it owns nothing.
+    # "bogus" is the unresolved-organization sentinel: it owns nothing.
     assert gate.has_object_permission(OrgReq(org="bogus"), View(), _obj(7)) is False
 
 

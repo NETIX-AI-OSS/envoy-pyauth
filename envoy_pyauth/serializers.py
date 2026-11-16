@@ -38,12 +38,12 @@ class ScopedRelatedFieldsMixin:
     """Narrow related-field querysets to the caller's Envoy scope.
 
     ``scoped_related_fields`` maps a serializer field name to the traversal that reaches
-    ``organization_id`` from that field's model — e.g. ``asset`` scopes on ``organization_id``
+    ``organization_id`` from that field's model, e.g. ``asset`` scopes on ``organization_id``
     while ``meter`` scopes on ``asset__organization_id``.
 
     The scoped queryset follows the caller's isolation flag: while the org still reads the
     shared catalog, org-0 template rows remain referenceable; once the org is isolated, they
-    are not — which is exactly the guarantee Phase 3's repoint depends on, since a payload that
+    are not, which is exactly the guarantee Phase 3's repoint depends on, since a payload that
     can still name an org-0 primitive can re-introduce the references the repoint just removed.
     """
 

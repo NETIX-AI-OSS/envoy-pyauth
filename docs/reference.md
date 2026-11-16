@@ -91,7 +91,7 @@ Fallback results:
 
 Scoped branch:
 
-- Filters on `field_name__in=scoped_org_ids(request, include_shared)` — `[org]`. The `[0, org]`
+- Filters on `field_name__in=scoped_org_ids(request, include_shared)`: `[org]`. The `[0, org]`
   union was removed in v3.0.0: every organization now owns cloned primitives, so unioning the
   template catalog back in would only re-expose the rows the migration moved everyone off
 - Applies `is_deleted=False` when `delete_filter=True`
@@ -105,19 +105,19 @@ Same branching behavior as `get_queryset`, but operates on an existing queryset 
 
 ### `organization_is_isolated(request)`
 
-**Deprecated in v3.0.0** — returns `True` for any resolved tenant caller. Every organization
+**Deprecated in v3.0.0**, returns `True` for any resolved tenant caller. Every organization
 owns its primitives now, so the flag no longer varies and code branching on it can be deleted.
 
 ### `scoped_org_ids(request, include_shared=None)`
 
 The organization ids a tenant caller may read: `[org]`, or `[0, org]` when `include_shared=True`
-is passed explicitly. It is never derived from the request — an organization that still needed
+is passed explicitly. It is never derived from the request, an organization that still needed
 the union would be one whose repoint never finished, and silently widening its queryset is how
 that goes unnoticed.
 
 ### `TEMPLATE_ORG_ID`
 
-`0` — the platform template catalog organization.
+`0`, the platform template catalog organization.
 
 ## Module: `envoy_pyauth.serializers`
 
@@ -146,7 +146,7 @@ Conventions shared by every service that clones the org-0 template catalog.
 
 Machine-key prefixing: `org_key("fire_alarm_systems", 3)` is `"nc3_fire_alarm_systems"`.
 Idempotent, and re-homing replaces rather than nests (`nc3_x` cloned into org 5 is `nc5_x`).
-Applies to identifier columns (`name`, `key`, `code`, `slug`, `path`) only — display columns
+Applies to identifier columns (`name`, `key`, `code`, `slug`, `path`) only, display columns
 are copied byte-identical, because display names are the cross-service name contract.
 
 ### `base_key(name)` / `key_owner(name)` / `is_org_key(name, org_id)`
@@ -156,7 +156,7 @@ membership test.
 
 ### `PROVENANCE_FIELDS`
 
-`("cloned_from_id", "template_revision", "is_customized")` — the columns every cloneable model
+`("cloned_from_id", "template_revision", "is_customized")`, the columns every cloneable model
 gains. Plain columns rather than foreign keys: the sources are multi-table-inherited in
 asset-service, and a cascade from a template onto live tenant rows is precisely what must not
 happen.

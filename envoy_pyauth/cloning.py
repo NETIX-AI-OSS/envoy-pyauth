@@ -4,9 +4,9 @@ The org-0 primitive cloning migration gives each organization its own copy of th
 catalog. Two conventions have to hold identically in seven services, so they live here rather
 than being re-derived per repo:
 
-**Org-prefixed machine keys.** A clone keeps its template's ``display_name`` byte-identical —
+**Org-prefixed machine keys.** A clone keeps its template's ``display_name`` byte-identical,
 that is the verified cross-service name contract (viz class bindings, tag EQUIP_INHERIT rules
-and denormalized ``PointTagDict.equipType`` values all match on display names) — and prefixes
+and denormalized ``PointTagDict.equipType`` values all match on display names), and prefixes
 the machine-facing identifier with ``nc<org_id>_``. The key space is then isolated per
 organization, so uniqueness holds by construction whether the underlying constraint happens to
 be per-org or global.
@@ -33,7 +33,7 @@ PROVENANCE_FIELDS = ("cloned_from_id", "template_revision", "is_customized")
 
 
 def org_prefix(org_id: int) -> str:
-    """The key prefix owned by ``org_id`` — ``nc3_`` for organization 3."""
+    """The key prefix owned by ``org_id``, ``nc3_`` for organization 3."""
     return f"{ORG_KEY_PREFIX}{int(org_id)}_"
 
 
@@ -43,7 +43,7 @@ def org_key(name: str, org_id: int) -> str:
     Idempotent, and re-homing is explicit: a key already prefixed for *another* organization is
     re-prefixed from its base rather than nested, so ``nc3_fire_alarm`` cloned into org 5 is
     ``nc5_fire_alarm`` and never ``nc5_nc3_fire_alarm``. Applies only to identifier columns
-    (``name``, ``key``, ``code``, ``slug``, ``path``) — never to display columns.
+    (``name``, ``key``, ``code``, ``slug``, ``path``), never to display columns.
     """
     return f"{org_prefix(org_id)}{base_key(name)}"
 

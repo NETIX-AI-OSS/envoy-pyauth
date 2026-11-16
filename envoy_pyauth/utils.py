@@ -21,7 +21,7 @@ def organization_is_isolated(request: EnvoyHttpRequest | None) -> bool:
 
 
 def scoped_org_ids(request: EnvoyHttpRequest | None, include_shared: bool | None = None) -> list[int]:
-    """The organization ids a tenant caller may read — its own, and only its own.
+    """The organization ids a tenant caller may read, its own, and only its own.
 
     ``include_shared=True`` is the one remaining way to re-admit the org-0 catalog, and it
     exists for the handful of platform-facing endpoints that genuinely aggregate across the

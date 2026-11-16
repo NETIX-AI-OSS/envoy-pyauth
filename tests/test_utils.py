@@ -1,4 +1,4 @@
-"""Unit tests for EnvoyQueryFilter's org scoping — pure branching tests, no Django DB."""
+"""Unit tests for EnvoyQueryFilter's org scoping, pure branching tests, no Django DB."""
 
 from envoy_pyauth.utils import EnvoyQueryFilter, scoped_org_ids
 
